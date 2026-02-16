@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LU | Q-Q Plot Masterclass</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&family=Montserrat:wght@800;900&display=swap');
+        
+        :root {
+            --lu-gold: #B5A26C;
+            --obsidian: #020617;
+            --charcoal: #0f172a;
+            --neon-blue: #3b82f6;
+            --error-red: #ef4444;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--obsidian);
+            color: #e2e8f0;
+            overflow: hidden; 
+            height: 100vh;
+        }
+
+        .font-brand { font-family: 'Montserrat', sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+        .glass {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 25px 50px rgba(0,0,0,0.4);
+        }
+
+        .btn-gold {
+            background: var(--lu-gold);
+            color: var(--obsidian);
+            font-weight: 800;
+            transition: all 0.3s ease;
+        }
+        .btn-gold:hover:not(:disabled) {
+            filter: brightness(1.1);
+            transform: translateY(-1px);
+            box-shadow: 0 5px 15px rgba(181, 162, 108, 0.3);
+        }
+        .btn-gold:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        .normal-path { fill: none; stroke: var(--neon-blue); stroke-width: 3; stroke-linecap: round; }
+        .guideline { stroke: white; stroke-width: 1; stroke-dasharray: 4,4; opacity: 0.3; }
+        .data-dot { stroke: white; stroke-width: 1.5; transition: all 0.4s ease; }
+        .q-line { stroke: var(--error-red); stroke-width: 2; stroke-dasharray: 8,4; }
+        
+        .axis-label { font-size: 10px; font-weight: 900; fill: #64748b; text-transform: uppercase; letter-spacing: 0.1em; }
+        
+        .viz-label {
+            position: absolute;
+            top: 1rem;
+            left: 1.5rem;
+            font-size: 0.6rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            color: #475569;
+        }
+    </style>
+</head>
+<body class="p-4 flex flex-col">
+
+    <div class="max-w-[1850px] w-full mx-auto flex flex-col h-full">
+        <!-- HEADER -->
+        <header class="flex justify-between items-center mb-4 border-b border-white/5 pb-3 flex-shrink-0">
+            <div class="flex items-center gap-4">
+                <div class="bg-blue-500/10 p-2 rounded-lg border border-blue-500/20">
+                    <i data-lucide="bar-chart-big" class="text-blue-400 w-5 h-5"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl md:text-2xl font-brand font-black text-white tracking-tighter uppercase leading-none">
+                        Q-Q <span class="text-transparent bg-clip-text bg-gradient-to-r from-[--lu-gold] to-white/40">Sync</span> Laboratory
+                    </h1>
+                    <p class="text-slate-500 text-[9px] font-bold uppercase tracking-widest mt-1">Instructor: Mr. Kalauni • DSCI 356000</p>
+                </div>
+            </div>
+            
+            <button onclick="window.resetSimulation()" class="p-2 glass rounded-xl hover:text-rose-400 transition-all group">
+                <i data-lucide="rotate-ccw" class="w-4 h-4 group-hover:rotate-[-180deg] transition-transform duration-500"></i>
+            </button>
+        </header>
+
+        <div class="grid grid-cols-12 gap-4 flex-1 min-h-0 overflow-hidden">
+            
+            <!-- LEFT PANEL: MINI SIDEBAR -->
+            <aside class="col-span-2 flex flex-col gap-3 overflow-y-auto">
+                <div class="glass p-4 rounded-3xl">
+                    <h3 class="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                        <i data-lucide="play" class="w-3 h-3 text-[--lu-gold]"></i> Interaction
+                    </h3>
+                    <button id="step-btn" onclick="window.nextStep()" class="btn-gold w-fit px-6 py-2 rounded-xl flex items-center justify-center gap-2 uppercase tracking-tighter text-[10px]">
+                        <span>Start</span>
+                        <i data-lucide="chevron-right" class="w-3 h-3"></i>
+                    </button>
+                </div>
+
+                <div class="glass p-4 rounded-3xl border-l-4 border-[--lu-gold]">
+                    <h4 class="text-[--lu-gold] font-black text-[9px] uppercase tracking-widest mb-1.5">Current Logic</h4>
+                    <p id="step-desc" class="text-[11px] text-slate-300 leading-snug">
+                        Ready to process order statistics. Press start to begin partitioning the normal curve.
+                    </p>
+                </div>
+
+                <div class="p-3 bg-black/20 rounded-2xl border border-white/5 mt-auto">
+                    <span class="text-[8px] font-black text-slate-500 uppercase block mb-1">Mapping Protocol</span>
+                    <p id="formula-txt" class="text-[10px] font-mono text-blue-400">Waiting...</p>
+                </div>
+            </aside>
+
+            <!-- RIGHT PANEL: DUAL PLOTS -->
+            <div class="col-span-10 flex h-full gap-4">
+                <div class="glass rounded-[3rem] overflow-hidden flex-1 relative flex border-white/10 shadow-2xl bg-[#020617]/40 min-w-0">
+                    
+                    <div class="w-1/2 border-r border-white/5 relative h-full">
+                        <div class="viz-label">Distribution Analysis (Left)</div>
+                        <div id="viz-left" class="w-full h-full"></div>
+                    </div>
+
+                    <div class="w-1/2 relative h-full">
+                        <div class="viz-label">Quantile Sync Map (Right)</div>
+                        <div id="viz-right" class="w-full h-full"></div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+
+        <!-- FOOTER BAR -->
+        <footer class="mt-4 p-3 glass rounded-2xl border-white/5 flex justify-between items-center px-8 flex-shrink-0">
+            <div class="flex items-center gap-6">
+                <div class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-[--neon-blue]"></div><span class="text-[9px] font-bold text-slate-500 uppercase">Theoretical</span></div>
+                <div class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-[--lu-gold]"></div><span class="text-[9px] font-bold text-slate-500 uppercase">Sample Rank</span></div>
+                <div class="flex items-center gap-2"><div class="w-3 h-0.5 bg-red-500"></div><span class="text-[9px] font-bold text-slate-500 uppercase">Q1-Q3 Reference</span></div>
+            </div>
+            <span class="font-mono text-[9px] text-slate-600 tracking-wider">LU_DSCI_QSYNC_V6.0</span>
+        </footer>
+    </div>
+
+    <script>
+        // --- DATA & CONFIG ---
+        const rawSalaries = [139, 173, 79, 115, 141, 97, 175, 147, 119, 160]; // n = 10
+        const sampleCount = rawSalaries.length;
+        let pointsData = rawSalaries.map((v, i) => ({ val: v, id: i, sorted: false, p: 0, z: 0, rank: 0 }));
+        let stepIdx = 0;
+        
+        const phases = [
+            { label: "Sort", title: "Order Statistics", desc: "Sorting n=10 sample values. This establishes the sequence y(1) < y(2) < ... < y(10).", formula: "Sorting Data Points..." },
+            { label: "Percentile", title: "Assign Probability", desc: "Calculating p = i / (n + 1). We divide the curve area into 11 equal pieces.", formula: "P(i) = i / (11)" },
+            { label: "Bell Curve", title: "Standard Normal", desc: "Summoning the benchmark distribution (μ=0, σ=1) where our data 'should' live.", formula: "Normal(0, 1)" },
+            { label: "Partition", title: "Theoretical Split", desc: "Slicing the Normal curve area into segments matching our sample probabilities.", formula: "Area Split = p" },
+            { label: "Locate Z", title: "Find Z-Scores", desc: "Identifying the Z-scores on the axis where our theoretical observations occur.", formula: "z_i = Φ⁻¹(p)" },
+            { label: "Morph & Fit", title: "Q-Q Synthesis", desc: "Morphing bubbles to (z, y) coordinates and drawing the Q1-Q3 reference line.", formula: "Linear Fit Assessment" }
+        ];
+
+        // --- D3 ORCHESTRATION ---
+        const vW = 600, vH = 500;
+        const pad = { top: 60, right: 50, bottom: 80, left: 60 };
+
+        const svgL = d3.select("#viz-left").append("svg").attr("viewBox", `0 0 ${vW} ${vH}`).attr("width", "100%").attr("height", "100%").style("overflow", "visible");
+        const svgR = d3.select("#viz-right").append("svg").attr("viewBox", `0 0 ${vW} ${vH}`).attr("width", "100%").attr("height", "100%").style("overflow", "visible");
+
+        const gL = svgL.append("g");
+        const gR = svgR.append("g").attr("transform", `translate(${pad.left}, ${pad.top})`).attr("opacity", 0);
+
+        // Inverse CDF (qnorm)
+        function qnorm_eval(p) {
+            const a = [-3.96968, 22.0946, -27.5928, 13.8357, -3.0664, 0.2506];
+            const b = [-54.476, 161.585, -155.698, 66.801, -1.3280];
+            const c = [-0.00778, -0.322, -2.4, -2.549, 4.374, 2.938];
+            const d = [0.00778, 0.322, 2.445, 3.754];
+            let q, r;
+            if (p < 0.02425) {
+                q = Math.sqrt(-2 * Math.log(p));
+                return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+            }
+            if (p <= 0.97575) {
+                q = p - 0.5; r = q * q;
+                return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+            }
+            q = Math.sqrt(-2 * Math.log(1 - p));
+            return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+        }
+
+        // Q1-Q3 Interpolation helper
+        function getLinearQuantile(p) {
+            const pos = (sampleCount + 1) * p;
+            const i = Math.floor(pos);
+            const delta = pos - i;
+            if (i < 1) return pointsData[0].val;
+            if (i >= sampleCount) return pointsData[sampleCount - 1].val;
+            return pointsData[i - 1].val + delta * (pointsData[i].val - pointsData[i - 1].val);
+        }
+
+        // --- ENGINE ---
+
+        function initDataState() {
+            gL.selectAll(".data-point-grp").remove();
+            gL.selectAll(".data-point-grp")
+                .data(pointsData)
+                .enter().append("g")
+                .attr("class", "data-point-grp")
+                .attr("transform", (d, i) => `translate(${vW/2 - 40}, ${60 + i * 35})`)
+                .each(function(d) {
+                    const el = d3.select(this);
+                    el.append("circle").attr("r", 15).attr("fill", "var(--charcoal)").attr("stroke", "#334155").attr("stroke-width", 2);
+                    el.append("text").attr("dy", ".35em").attr("text-anchor", "middle").attr("fill", "white").attr("font-size", "9px").attr("font-weight", "bold").text(d.val);
+                });
+            lucide.createIcons();
+        }
+
+        window.nextStep = function() {
+            if (stepIdx >= stages.length) return;
+            const phase = stages[stepIdx];
+            document.getElementById('step-desc').innerText = phase.desc;
+            document.getElementById('formula-txt').innerText = phase.formula;
+            
+            const btn = document.getElementById('step-btn');
+            btn.querySelector('span').innerText = stepIdx < stages.length - 1 ? stages[stepIdx+1].label : "Analysis Complete";
+            if (stepIdx === stages.length - 1) btn.disabled = true;
+
+            switch(stepIdx) {
+                case 0: sortAction(); break;
+                case 1: probAction(); break;
+                case 2: curveAction(); break;
+                case 3: partitionAction(); break;
+                case 4: zAction(); break;
+                case 5: mappingAction(); break;
+            }
+            stepIdx++;
+        }
+
+        function sortAction() {
+            pointsData.sort((a, b) => a.val - b.val);
+            pointsData = pointsData.map((p, i) => ({ ...p, rank: i+1 }));
+            gL.selectAll(".data-point-grp")
+                .data(pointsData, d => d.id)
+                .transition().duration(1000).attr("transform", (d, i) => `translate(${vW/2 - 100}, ${60 + i * 35})`);
+        }
+
+        function probAction() {
+            gL.selectAll(".data-point-grp")
+                .append("text")
+                .attr("class", "prob-text")
+                .attr("x", 40).attr("y", 3).attr("fill", "var(--lu-gold)").attr("font-weight", "bold").attr("font-size", "10px").attr("opacity", 0)
+                .text((d, i) => `p = ${(i+1)}/11`)
+                .transition().duration(600).attr("opacity", 1);
+        }
+
+        function curveAction() {
+            gL.selectAll(".data-point-grp").transition().duration(500).attr("opacity", 0.15);
+            const curveLayer = gL.append("g").attr("class", "curve-layer").attr("transform", "translate(0, 400)");
+            const xS = d3.scaleLinear().domain([-3.5, 3.5]).range([pad.left, vW - pad.right]);
+            const yS = d3.scaleLinear().domain([0, 0.45]).range([100, 0]);
+            const lineGen = d3.line().x(d => xS(d)).y(d => yS((1/Math.sqrt(2*Math.PI))*Math.exp(-0.5*d*d))).curve(d3.curveBasis);
+            const cData = d3.range(-3.5, 3.6, 0.1);
+
+            curveLayer.append("path").datum(cData).attr("class", "normal-path").attr("d", lineGen)
+                .attr("stroke-dasharray", 1000).attr("stroke-dashoffset", 1000)
+                .transition().duration(1500).attr("stroke-dashoffset", 0);
+
+            curveLayer.append("g").attr("transform", "translate(0, 100)").call(d3.axisBottom(xS).ticks(5)).attr("class", "axis-label opacity-40");
+        }
+
+        function partitionAction() {
+            const layer = gL.select(".curve-layer");
+            const xS = d3.scaleLinear().domain([-3.5, 3.5]).range([pad.left, vW - pad.right]);
+            pointsData.forEach((d, i) => {
+                d.p = (i+1) / (sampleCount + 1);
+                d.z = qnorm_eval(d.p);
+                layer.append("line")
+                    .attr("class", "division-line")
+                    .attr("x1", xS(d.z)).attr("y1", 100).attr("x2", xS(d.z)).attr("y2", 100)
+                    .transition().delay(i * 100).duration(600).attr("y2", 0);
+            });
+        }
+
+        function zAction() {
+            const layer = gL.select(".curve-layer");
+            const xS = d3.scaleLinear().domain([-3.5, 3.5]).range([pad.left, vW - pad.right]);
+            pointsData.forEach((d, i) => {
+                layer.append("text")
+                    .attr("x", xS(d.z)).attr("y", 115).attr("text-anchor", "middle").attr("fill", "var(--neon-blue)").attr("font-size", "9px").attr("font-weight", "900").attr("opacity", 0)
+                    .text(d.z.toFixed(2))
+                    .transition().delay(i * 100).duration(500).attr("opacity", 1);
+            });
+        }
+
+        function mappingAction() {
+            const pAreaH = vH - pad.top - pad.bottom;
+            gR.transition().duration(1000).attr("opacity", 1);
+            const xScale = d3.scaleLinear().domain([-3, 3]).range([0, vW - pad.left - pad.right]);
+            const yScale = d3.scaleLinear().domain([60, 200]).range([pAreaH, 0]);
+
+            // Setup Right Axes
+            gR.append("g").attr("transform", `translate(0, ${pAreaH})`).call(d3.axisBottom(xScale).ticks(5)).attr("class", "axis-label");
+            gR.append("g").call(d3.axisLeft(yScale).ticks(5)).attr("class", "axis-label");
+            gR.append("text").attr("x", (vW - pad.left - pad.right)/2).attr("y", pAreaH + 45).attr("text-anchor", "middle").attr("class", "axis-label").text("Theoretical Z-Quantiles");
+            gR.append("text").attr("transform", "rotate(-90)").attr("x", -pAreaH/2).attr("y", -45).attr("text-anchor", "middle").attr("class", "axis-label").text("Sample Quantiles (y)");
+
+            // FLYING MORPH ANIMATION
+            pointsData.forEach((d, i) => {
+                const traveler = gL.append("circle")
+                    .attr("cx", vW/2 - 100).attr("cy", 60 + i * 35)
+                    .attr("r", 15).attr("fill", "var(--charcoal)").attr("stroke", "#334155").attr("opacity", 0.6);
+
+                traveler.transition()
+                    .delay(i * 150)
+                    .duration(1500)
+                    .attr("cx", vW + xScale(d.z) + pad.left - (vW/2))
+                    .attr("cy", yScale(d.val) + pad.top)
+                    .attr("r", 6)
+                    .on("end", function() {
+                        gR.append("circle")
+                            .attr("cx", xScale(d.z)).attr("cy", yScale(d.val))
+                            .attr("r", 6).attr("fill", "var(--lu-gold)").attr("class", "data-dot shadow-2xl");
+                        d3.select(this).remove();
+                    });
+            });
+
+            // REF LINE Q1-Q3
+            setTimeout(() => {
+                const zQ1 = qnorm_eval(0.25), zQ3 = qnorm_eval(0.75);
+                const sQ1 = getLinearQuantile(0.25), sQ3 = getLinearQuantile(0.75);
+                const slope = (sQ3 - sQ1) / (zQ3 - zQ1);
+                const intercept = sQ1 - slope * zQ1;
+                const x1 = -2.8, x2 = 2.8;
+                
+                gR.append("line")
+                    .attr("class", "q-line")
+                    .attr("x1", xScale(zQ1)).attr("y1", yScale(sQ1)).attr("x2", xScale(zQ1)).attr("y2", yScale(sQ1))
+                    .transition().duration(2500)
+                    .attr("x1", xScale(x1)).attr("y1", yScale(slope * x1 + intercept))
+                    .attr("x2", xScale(x2)).attr("y2", yScale(slope * x2 + intercept));
+
+                gR.append("text").attr("x", xScale(zQ1)).attr("y", yScale(sQ1)-10).attr("fill", "var(--error-red)").attr("font-size", "8px").attr("text-anchor", "middle").attr("font-weight", "bold").text("Q1");
+                gR.append("text").attr("x", xScale(zQ3)).attr("y", yScale(sQ3)-10).attr("fill", "var(--error-red)").attr("font-size", "8px").attr("text-anchor", "middle").attr("font-weight", "bold").text("Q3");
+            }, 2500);
+        }
+
+        window.resetSimulation = function() {
+            stepIdx = 0;
+            pointsData = rawSalaries.map((v, i) => ({ val: v, id: i, sorted: false, p: 0, z: 0, rank: 0 }));
+            svgL.selectAll("g").remove(); svgR.selectAll("g").remove();
+            gL = svgL.append("g");
+            gR = svgR.append("g").attr("transform", `translate(${pad.left}, ${pad.top})`).attr("opacity", 0);
+            
+            document.getElementById('step-btn').disabled = false;
+            document.getElementById('step-btn').querySelector('span').innerText = "Start";
+            document.getElementById('step-desc').innerText = "Ready to process n=10 sample observations. Press start to begin partitioning the normal curve.";
+            document.getElementById('formula-txt').innerText = "Waiting...";
+            initDataState();
+        }
+
+        window.onload = initDataState;
+    </script>
+</body>
+</html>
